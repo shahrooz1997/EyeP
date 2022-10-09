@@ -102,7 +102,7 @@ class Handler:
         self.src = src
         self.vs = VideoStream(self.src, resolution=Handler.RESOLUTION).start()
 
-    def run(self):
+    def run(self, video_output=False):
         # while True:
         #     t = time.time()
         #     img = self.vs.read()
@@ -138,24 +138,26 @@ class Handler:
                     if notice is not None:
                         notice.close()
                 if last_closed_eye and not closed_eye:
-                    if time_when_blinked is None or time.time() - time_when_blinked > 2:
+                    if time_when_blinked is None or time.time() - time_when_blinked > 3:
                         if time_when_blinked is not None:
                             print("Blinked {} after {}s".format(blink_number, time.time() - time_when_blinked))
                         time_when_blinked = time.time()
                         blink_number += 1
-                for e in eyes:
-                    for point in e:
-                        cv2.circle(img, (point.x, point.y), 1, color=(0, 255, 255))
-                # cv2.rectangle(img, (x, y), (x + w, y + h), (255, 255, 0), 2)
+                if video_output:
+                    for e in eyes:
+                        for point in e:
+                            cv2.circle(img, (point.x, point.y), 1, color=(0, 255, 255))
+                    # cv2.rectangle(img, (x, y), (x + w, y + h), (255, 255, 0), 2)
             else:
                 time_when_closed = time.time()
                 time_when_blinked = None
                 if notice is not None:
                     notice.close()
                 print("No eyes detected for {}s".format(time.time() - time_when_eyes_detected))
-            cv2.imshow('my image', img)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+            if video_output:
+                cv2.imshow('my image', img)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
             time_since_closed = time.time() - time_when_closed
             if time_since_closed > 10 and time.time() - time_when_notified > 5:
                 if notice is not None:
@@ -164,18 +166,18 @@ class Handler:
                                               "You didn't blink for more than {} seconds".format(time_since_closed))
                 notice.show()
                 time_when_notified = time.time()
-            if time.time() - time_when_eyes_detected > 300:
-                print("No eyes are detected for 5 mins; sleeping for 30 mins")
+            if time.time() - time_when_eyes_detected > 3*60:
+                print("No eyes are detected for 3 mins; sleeping for 15 mins")
                 self.vs.stop()
                 self.vs.stream.release()
-                time.sleep(30*60)
+                time.sleep(15*60)
                 self.vs = VideoStream(self.src, resolution=Handler.RESOLUTION).start()
                 time_when_eyes_detected = time.time()
 
 
 def main():
     handler = Handler(src=0)
-    handler.run()
+    handler.run(video_output=True)
 
 
 if __name__ == '__main__':
