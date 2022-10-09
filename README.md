@@ -27,6 +27,7 @@ You may need to adjust some variables based on your environment and how your web
 * Add support for other operating systems (Windows and macOS)
 * Add a notification to follow 20/20/20 rule. (After looking at the monitor for 20 minutes, you should look at a point
   that is at lear 20 feet far for 20 seconds)
+* Use argparse for variables
 
 ## Contribution
 
