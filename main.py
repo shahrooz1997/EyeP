@@ -1,155 +1,100 @@
 import cv2
-import numpy
 import time
+import dlib
+import notify2
+import utils
 
 
 class EyeDetector(object):
+    EAR_THRESHOLD = 0.19
+
     def __init__(self):
-        self.face_cascade = cv2.CascadeClassifier("./data/haarcascade_frontalface_default.xml")
-        self.eye_cascade = cv2.CascadeClassifier("./data/haarcascade_eye.xml")
+        self.face_detector = dlib.get_frontal_face_detector()
+        self.predictor = dlib.shape_predictor("data/shape_predictor_68_face_landmarks.dat")
 
     def get_faces(self, img):
-        img = EyeDetector.convert_to_gray_scale(img)
-        faces = self.face_cascade.detectMultiScale(img, 1.3, 5)
-        if faces is None or len(faces) == 0:
-            return []
+        faces = self.face_detector(img, 1)
+        # print("Number of faces detected: {}".format(len(faces)))
         return faces
 
     def get_eyes(self, img):
-        def pick_smaller_rect_if_clashes(eyes):
-            print("pick_smaller_rect_if_clashes")
-            ret = []
-            selected_indices = []
-            considered_indices = []
-            for i, eye in enumerate(eyes):
-                x, y, w, h = eye
-                clashed_eyes = [[i,eye]]
-                considered_indices.append(i)
-                for j, e in enumerate(eyes):
-                    if i == j:
-                        continue
-                    if x + w > e[0] and e[0] + e[2] > x:
-                        clashed_eyes.append([j, e])
-                smallest_w = 100000000
-                smallest_x = 100000000
-                chosen = None
-                print(clashed_eyes)
-                for j, e in clashed_eyes:
-                    if smallest_w > e[2] or (smallest_w == e[2] and smallest_x < e[0]):
-                        smallest_w = e[2]
-                        smallest_x = e[0]
-                        chosen = [j, e]
-                if chosen is not None and chosen[0] not in selected_indices:
-                    selected_indices.append(chosen[0])
-                    ret.append(chosen[1])
-                    print("chosen")
-                    print(chosen)
+        def get_eye_parts(shape):
+            return [[shape.part(36), shape.part(37), shape.part(38), shape.part(39), shape.part(40), shape.part(41)],
+                    [shape.part(42), shape.part(43), shape.part(44), shape.part(45), shape.part(46), shape.part(47)]]
 
-            print("pick_smaller_rect_if_clashes done")
-            return ret
-
-
-        def pick_smaller_rect_if_clashes_improved(eyes):
-            print("pick_smaller_rect_if_clashes")
-            ret = []
-            print("TTT")
-            print(eyes)
-            clashed_eyes_dict = {}
-            for i, eye in enumerate(eyes):
-                x, y, w, h = eye
-                clashed_eyes = [[i,eye]]
-                for j, e in enumerate(eyes):
-                    if i == j:
-                        continue
-                    if x + w > e[0] and e[0] + e[2] > x:
-                        clashed_eyes.append([j, e])
-                print("AAA")
-                print(clashed_eyes)
-                clashed_eyes_dict[i] = clashed_eyes
-
-            print(clashed_eyes_dict)
-            for i, clashed_eyes in clashed_eyes_dict.items():
-                smallest_w = 100000000
-                smallest_x = 100000000
-                chosen = None
-                for j, e in clashed_eyes:
-                    if smallest_w > e[2] > 30 or (smallest_w == e[2] and smallest_x < e[0]):
-                        smallest_w = e[2]
-                        smallest_x = e[0]
-                        chosen = [j, e]
-                if chosen is not None and chosen[0] == i:
-                    ret.append(chosen[1])
-                print("chosen")
-                print(chosen)
-            print("pick_smaller_rect_if_clashes done")
-            return ret
-
-        img = EyeDetector.convert_to_gray_scale(img)
         faces = self.get_faces(img)
-        eyes = []
-        for face in faces:
-            # eyes.append([None, None])
-            x, y, w, h = face
-            gray_img_face_cut = img[y:y + h, x:x + w]
-            eyes_in_this_face = self.eye_cascade.detectMultiScale(gray_img_face_cut)
-            mid_face_h = w / 2
-            mid_face_v = h / 2
-            upper_eyes_in_this_face = []
-            for e in eyes_in_this_face:
-                # Eyes are on the upper part of a face.
-                if e[1] > mid_face_v:
-                    continue
-                e[0] += x
-                e[1] += y
-                upper_eyes_in_this_face.append(e)
-            print(upper_eyes_in_this_face)
-            real_eyes_in_this_face = pick_smaller_rect_if_clashes_improved(upper_eyes_in_this_face)
-            # eyes[-1][0] =
-            eyes.append(real_eyes_in_this_face)
-        return eyes
+        ret = []
+        for f in faces:
+            shape = self.predictor(img, f)
+            ret.append(get_eye_parts(shape))
+
+        return ret
 
     @staticmethod
-    def convert_to_gray_scale(img):
-        if not isinstance(img, numpy.ndarray) or len(img.shape) > 2:
-            return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        return img
+    def is_eye_closed(eye):
+        def compute_ear(eye):
+            return (utils.compute_distance(eye[1], eye[5]) + utils.compute_distance(eye[2], eye[4])) / (
+                    2 * utils.compute_distance(eye[0], eye[3]))
+
+        if compute_ear(eye) < EyeDetector.EAR_THRESHOLD:
+            return True
+        return False
 
     @staticmethod
     def load_img(filepath):
-        return cv2.imread(filepath)
+        return dlib.load_rgb_image(filepath)
+        # return cv2.imread(filepath)
+
+
+class Handler:
+    APPLICATION_NAME = "EyeP"
+
+    def __init__(self):
+        notify2.init(Handler.APPLICATION_NAME)
+        self.eye_detector = EyeDetector()
+
+    def run(self):
+        cap = cv2.VideoCapture("data/s.mp4")
+        counter = -1
+        time_when_blinked = time.time()
+        notice = None
+        time_when_notified = time.time()
+        while True:
+            _, frame = cap.read()
+            if frame is None:
+                break
+            counter = (counter + 1) % 10
+            if counter != 0:
+                continue
+            eyes_in_faces = self.eye_detector.get_eyes(frame)
+            if len(eyes_in_faces) > 0:
+                eyes = eyes_in_faces[0]
+                # print(eyes)
+                if self.eye_detector.is_eye_closed(eyes[0]) or self.eye_detector.is_eye_closed(eyes[1]):
+                    print("Blinked")
+                    time_when_blinked = time.time()
+                    if notice is not None:
+                        notice.close()
+                # for e in eyes:
+                #     for point in e:
+                #         cv2.circle(frame, (point.x, point.y), 3, color=(0, 255, 255))
+                # cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 255, 0), 2)
+            cv2.imshow('my image', frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+            time_since_blinked = time.time() - time_when_blinked
+            if time_since_blinked > 10 and time.time() - time_when_notified > 5:
+                if notice is not None:
+                    notice.close()
+                notice = notify2.Notification("EyeP",
+                                              "You didn't blink for more than {} seconds".format(time_since_blinked))
+                notice.show()
+                time_when_notified = time.time()
 
 
 def main():
-    eye_detector = EyeDetector()
-    img = cv2.imread("./data/s1.jpg")
-    print(eye_detector.get_eyes(img))
-    # return
-    # gray_picture = EyeDetector.get_gray_scale_img(img)
-    # faces = eye_detector.get_eyes(gray_picture)[0]
-    # print(faces)
-    # for (x, y, w, h) in faces:
-    #     cv2.rectangle(gray_picture, (x, y), (x + w, y + h), (255, 255, 0), 2)
-    # cv2.imshow('my image', gray_picture)
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
-
-    # cap = cv2.VideoCapture(0)
-    cap = cv2.VideoCapture("data/s.mp4")
-    while True:
-        _, frame = cap.read()
-        eyes_in_faces = eye_detector.get_eyes(frame)
-        if len(eyes_in_faces) > 0:
-            eyes = eyes_in_faces[0]
-        # for eyes in eye_detector.get_eyes(frame):
-            # eyes = eye_detector.get_eyes(frame)[0]
-            for (x, y, w, h) in eyes:
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 255, 0), 2)
-        cv2.imshow('my image', frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-        time.sleep(.1)
-    cap.release()
-    cv2.destroyAllWindows()
+    handler = Handler()
+    handler.run()
 
 
 if __name__ == '__main__':
