@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 import cv2
 import time
 import dlib
@@ -6,7 +8,7 @@ import utils
 
 
 class EyeDetector(object):
-    EAR_THRESHOLD = 0.19
+    EAR_THRESHOLD = 0.20
 
     def __init__(self):
         self.face_detector = dlib.get_frontal_face_detector()
@@ -54,40 +56,50 @@ class Handler:
         self.eye_detector = EyeDetector()
 
     def run(self):
-        cap = cv2.VideoCapture("data/s.mp4")
+        # cap = cv2.VideoCapture("data/s.mp4")
+        cap = cv2.VideoCapture(0)
         counter = -1
-        time_when_blinked = time.time()
+        time_when_closed = time.time()
         notice = None
+        closed_eye = False
         time_when_notified = time.time()
         while True:
             _, frame = cap.read()
             if frame is None:
                 break
-            counter = (counter + 1) % 10
+            counter = (counter + 1) % 1
             if counter != 0:
                 continue
             eyes_in_faces = self.eye_detector.get_eyes(frame)
             if len(eyes_in_faces) > 0:
                 eyes = eyes_in_faces[0]
                 # print(eyes)
-                if self.eye_detector.is_eye_closed(eyes[0]) or self.eye_detector.is_eye_closed(eyes[1]):
-                    print("Blinked")
-                    time_when_blinked = time.time()
+                last_closed_eye = closed_eye
+                closed_eye = self.eye_detector.is_eye_closed(eyes[0]) or self.eye_detector.is_eye_closed(eyes[1])
+                if closed_eye:
+                    time_when_closed = time.time()
                     if notice is not None:
                         notice.close()
-                # for e in eyes:
-                #     for point in e:
-                #         cv2.circle(frame, (point.x, point.y), 3, color=(0, 255, 255))
+                if last_closed_eye and not closed_eye:
+                    print("Blinked at {}".format(time.time()))
+                for e in eyes:
+                    for point in e:
+                        cv2.circle(frame, (point.x, point.y), 3, color=(0, 255, 255))
                 # cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 255, 0), 2)
-            cv2.imshow('my image', frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-            time_since_blinked = time.time() - time_when_blinked
-            if time_since_blinked > 10 and time.time() - time_when_notified > 5:
+            else:
+                time_when_closed = time.time()
+                if notice is not None:
+                    notice.close()
+                print("No eyes detected")
+            # cv2.imshow('my image', frame)
+            # if cv2.waitKey(1) & 0xFF == ord('q'):
+            #     break
+            time_since_closed = time.time() - time_when_closed
+            if time_since_closed > 10 and time.time() - time_when_notified > 5:
                 if notice is not None:
                     notice.close()
                 notice = notify2.Notification("EyeP",
-                                              "You didn't blink for more than {} seconds".format(time_since_blinked))
+                                              "You didn't blink for more than {} seconds".format(time_since_closed))
                 notice.show()
                 time_when_notified = time.time()
 
