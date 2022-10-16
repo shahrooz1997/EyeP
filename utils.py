@@ -1,4 +1,9 @@
+import sys
 import math
+
+
+def is_linux_based():
+    return sys.platform.startswith("linux") or sys.platform.startswith("darwin")
 
 
 def compute_distance(p1, p2):

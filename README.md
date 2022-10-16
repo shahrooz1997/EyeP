@@ -1,7 +1,6 @@
 # EyeProtector
 
-This python script uses your webcam to let you know that you did not blink for more than 10 seconds. It is implemented
-to work on Ubuntu 18.04.
+This python script uses your webcam to let you know that you did not blink for more than 10 seconds.
 
 ## How it works?
 
